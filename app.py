@@ -3,17 +3,29 @@ import easyocr
 from PIL import Image
 import numpy as np
 
-# 1. Веб-беттің негізгі баптаулары
+# =====================================================
+# БЕТ БАПТАУЛАРЫ
+# =====================================================
+
 st.set_page_config(
-    page_title="Суреттегі кодты түсіндіргіш", 
-    page_icon="🤖", 
+    page_title="Суреттегі кодты түсіндіргіш",
+    page_icon="🤖",
     layout="centered"
 )
 
-st.title("🤖 Python Кодына Автоматты Түсіндірме Жазу Панелі")
-st.write("🧑‍🏫 **Нұсқаулық:** Оқушының код жазылған 1 суретін жүктеңіз. Жүйе кодты оқып, оның әр жолына қазақша түсіндірме (комментарий) қосып береді.")
+st.title("🤖 Python кодына автоматты түсіндірме жазу панелі")
 
-# 2. OCR модельді іске қосу (Кэштеледі)
+st.write("""
+🧑‍🏫 **Нұсқаулық:**
+1. Камераны қосыңыз немесе файл жүктеңіз.
+2. Код жазылған парақты түсіріңіз.
+3. Жүйе кодты оқып, әр жолына қазақша түсіндірме қосады.
+""")
+
+# =====================================================
+# OCR МОДЕЛІ
+# =====================================================
+
 @st.cache_resource
 def load_ocr_model():
     return easyocr.Reader(['en'])
@@ -21,91 +33,154 @@ def load_ocr_model():
 try:
     reader = load_ocr_model()
 except Exception as e:
-    st.error(f"OCR Моделін жүктеу қатесі: {e}")
+    st.error(f"OCR моделін жүктеу қатесі: {e}")
+    st.stop()
 
-# 3. Код жолдарын автоматты талдау және түсіндіру функциясы
+# =====================================================
+# КОММЕНТАРИЙ ҚОСУ ФУНКЦИЯСЫ
+# =====================================================
+
 def generate_comments(raw_code):
     lines = raw_code.split('\n')
     commented_lines = []
-    
-    # Қарапайым ережелер жинағы (Кодты талдау үшін)
+
     for line in lines:
         stripped = line.strip()
         comment = ""
-        
+
         if not stripped:
             commented_lines.append(line)
             continue
-            
-        # Кодтың мағынасына қарай қазақша түсініктеме таңдау
+
         if stripped.startswith("import ") or stripped.startswith("from "):
-            comment = "# 📦 Қажетті кітапхананы (модульді) бағдарламаға қосу"
+            comment = "# 📦 Қажетті кітапхананы қосу"
+
         elif stripped.startswith("def "):
-            comment = "# ⚙️ Жаңа функция жариялау (құру)"
+            comment = "# ⚙️ Функцияны жариялау"
+
+        elif stripped.startswith("class "):
+            comment = "# 🏗️ Класс құру"
+
         elif stripped.startswith("print("):
-            comment = "# 🖥️ Нәтижені немесе мәтінді экранға шығару"
-        elif stripped.startswith("if ") or stripped.startswith("elif "):
-            comment = "# 🔀 Шартты тексеру (Егер шарт орындалса...)"
+            comment = "# 🖥️ Нәтижені экранға шығару"
+
+        elif stripped.startswith("input("):
+            comment = "# ⌨️ Пайдаланушыдан мәлімет енгізу"
+
+        elif stripped.startswith("if "):
+            comment = "# 🔀 Шартты тексеру"
+
+        elif stripped.startswith("elif "):
+            comment = "# 🔀 Қосымша шартты тексеру"
+
         elif stripped.startswith("else:"):
-            comment = "# 🔁 Әйтпесе (жоғарыдағы шарттар орындалмаған жағдайда)"
-        elif stripped.startswith("for ") or stripped.startswith("while "):
-            comment = "# 🔄 Циклды іске қосу (әрекетті бірнеше рет қайталау)"
-        elif "=" in stripped and not stripped.startswith("#"):
-            comment = "# 💾 Айнымалы мәнін беру немесе есептеу жүргізу"
+            comment = "# 🔁 Әйтпесе"
+
+        elif stripped.startswith("for "):
+            comment = "# 🔄 For циклін орындау"
+
+        elif stripped.startswith("while "):
+            comment = "# 🔄 While циклін орындау"
+
         elif stripped.startswith("return "):
-            comment = "# ↩️ Функцияның жұмыс нәтижесін кері қайтару"
-        elif stripped.startswith("#"):
-            comment = "" # Егер кодта онсыз да комментарий болса, тиіспейміз
-            
-        # Егер түсіндірме табылса, оны код жолының үстіне қосамыз
+            comment = "# ↩️ Нәтижені қайтару"
+
+        elif "=" in stripped and not stripped.startswith("#"):
+            comment = "# 💾 Айнымалыға мән беру"
+
         if comment:
             commented_lines.append(comment)
+
         commented_lines.append(line)
-        
+
     return "\n".join(commented_lines)
 
-# 4. Файлды қабылдау бөлімі
-uploaded_file = st.file_uploader(
-    "Оқушының код түсірілген суретін таңдаңыз (1 сурет)", 
-    type=["jpg", "png", "jpeg"]
+# =====================================================
+# СУРЕТ КӨЗІН ТАҢДАУ
+# =====================================================
+
+source = st.radio(
+    "Сурет көзін таңдаңыз:",
+    ["📷 Камера", "📁 Файл"]
 )
 
-# 5. Басты логика
-if uploaded_file:
-    st.image(uploaded_file, caption="Жүктелген сурет", use_container_width=True)
-    
-    with st.spinner("⏳ Суреттен код оқылып, түсіндірме дайындалуда..."):
-        try:
-            # Суретті өңдеу
-            image = Image.open(uploaded_file)
+uploaded_file = None
+
+if source == "📷 Камера":
+    uploaded_file = st.camera_input(
+        "Код жазылған парақты түсіріңіз"
+    )
+
+else:
+    uploaded_file = st.file_uploader(
+        "Код суретін таңдаңыз",
+        type=["jpg", "jpeg", "png"]
+    )
+
+# =====================================================
+# ӨҢДЕУ
+# =====================================================
+
+if uploaded_file is not None:
+
+    try:
+        image = Image.open(uploaded_file)
+
+        st.image(
+            image,
+            caption="Жүктелген сурет",
+            use_container_width=True
+        )
+
+        with st.spinner("⏳ Код оқылып жатыр..."):
+
             image_np = np.array(image)
-            
-            # OCR арқылы кодты мәтінге айналдыру
-            result = reader.readtext(image_np, detail=0)
+
+            result = reader.readtext(
+                image_np,
+                detail=0,
+                paragraph=False
+            )
+
             raw_code = "\n".join(result)
-            
-            if raw_code.strip() == "":
-                st.warning("⚠️ Суреттен ешқандай код табылмады. Суреттің анық екеніне көз жеткізіңіз.")
+
+            if not raw_code.strip():
+                st.warning(
+                    "⚠️ Суреттен код табылмады. Анық сурет жүктеп көріңіз."
+                )
+
             else:
-                # Оқушының атын файл атауынан алу
-                student_name = uploaded_file.name.split('.')[0]
-                
-                # Түсіндірме қосылған кодты жасау
+
                 final_code = generate_comments(raw_code)
-                
-                # Нәтижені көрсету
-                st.success("✅ Код сәтті оқылды және түсіндірме дайын болды!")
-                
-                st.subheader(f"👤 {student_name} коды (Автоматты комментариймен):")
-                st.code(final_code, language="python")
-                
-                # Дайын файлды жүктеп алу батырмасы
+
+                st.success(
+                    "✅ Код сәтті оқылды және комментарий қосылды!"
+                )
+
+                st.subheader("📄 OCR арқылы оқылған код")
+
+                st.code(
+                    raw_code,
+                    language="python"
+                )
+
+                st.subheader(
+                    "🤖 Автоматты түсіндірме қосылған нұсқа"
+                )
+
+                st.code(
+                    final_code,
+                    language="python"
+                )
+
                 st.download_button(
-                    label="💾 Комментарийленген кодты (.py) жүктеп алу",
+                    label="💾 .py файлын жүктеу",
                     data=final_code,
-                    file_name=f"{student_name}_commented.py",
+                    file_name="commented_code.py",
                     mime="text/x-python"
                 )
-                
-        except Exception as e:
-            st.error(f"❌ Файлды өңдеу барысында қате кетті: {e}")
+
+    except Exception as e:
+        st.error(
+            f"❌ Өңдеу барысында қате пайда болды: {e}"
+        )
